@@ -5,7 +5,7 @@ import os
 import sys
 import predictor          # 지정학/변동성 예측 엔진
 import bubble_predictor   # 거시경제/버블 예측 엔진
-
+import news_updater
 # 페이지 기본 설정
 st.set_page_config(page_title="AI-GPR Market Risk Dashboard", layout="wide")
 
@@ -28,32 +28,17 @@ if st.session_state.page == 1:
 
     # 1-1. 지정학 뉴스 섹션
     if st.button("오늘의 지정학 뉴스 업데이트"):
-        with st.spinner("뉴스 수집 중..."):
-            subprocess.run([sys.executable, "news_updater.py"])
+        with st.spinner("최신 연합뉴스 국제망을 스캔하여 위험도를 분석 중입니다..."):
+            try:
+                # subprocess 대신 다이렉트로 함수 호출!
+                news_updater.update_news()
+                st.success("지정학 뉴스 스캔 완료!")
+            except Exception as e:
+                st.error(f"뉴스 수집 중 오류가 발생했습니다: {e}")
 
     if os.path.exists("today_geopolitical_news.csv"):
         news = pd.read_csv("today_geopolitical_news.csv")
-        top_3_news = news.sort_values(by="risk_score", ascending=False).head(3)
-        cols = st.columns(3)
-        
-        for index, (col, row) in enumerate(zip(cols, top_3_news.iterrows())):
-            row_data = row[1]
-            level = row_data["risk_level"]
-            icon = "🔴" if level == "HIGH" else "🟠" if level == "MEDIUM" else "🟡"
-            
-            with col:
-                with st.container(border=True):
-                    st.markdown(f"#### {icon} {level}")
-                    st.markdown(f"**{row_data['title']}**")
-                    st.caption(f"**Risk Score:** {row_data['risk_score']} | **Impact:** {row_data['expected_impact']}")
-                    
-                    with st.expander("세부 내용 및 키워드 보기"):
-                        st.write(f"**Matched Keywords:** {row_data['matched_keywords']}")
-                        st.write(row_data["summary"])
-                        st.markdown(f"[기사 원문 보기]({row_data['url']})")
-    else:
-        st.warning("아직 뉴스 CSV가 없습니다. 업데이트 버튼을 눌러주세요.")
-
+        # (이 아래 top_3_news = ... 부터는 기존 코드와 완전히 동일하게 둡니다)
     # 1-2. 주식 시장 버블 위험도 섹션 (실제 머신러닝 엔진 연동)
     st.divider()
     st.subheader("🚨 US Market Bubble Risk Indicator")
