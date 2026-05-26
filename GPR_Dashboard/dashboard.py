@@ -4,16 +4,18 @@ import os
 import sys
 import predictor
 import bubble_predictor
-import news_updater  # 초고속 뉴스 엔진 연결
+import news_updater  # 초고속 뉴스 엔진
 
 st.set_page_config(page_title="Global Market Risk Dashboard", layout="wide")
 
 st.title("🌐 글로벌 금융 시장 및 지정학적 위험도 대시보드")
 st.markdown("본 대시보드는 글로벌 지정학적 위험(GPR)과 거시경제 지표를 결합하여 시장의 변동성 및 버블 위험도를 실시간으로 진단합니다.")
 
-# 세션 상태 초기화 (뉴스 업데이트 후 화면 갱신용)
-if "news_updated" not in st.session_state:
-    st.session_state.news_updated = False
+# ==============================================================================
+# 세션 상태(Session State) 초기화
+# ==============================================================================
+if "news_page" not in st.session_state:
+    st.session_state.news_page = 0  # 현재 뉴스 페이지 위치 번호
 
 # ==============================================================================
 # SIDEBAR : 제어 컨트롤러 및 실시간 뉴스 스캔
@@ -26,9 +28,9 @@ with st.sidebar:
         with st.spinner("최신 연합뉴스 국제망 초고속 스캔 중..."):
             try:
                 news_updater.update_news()
-                st.session_state.news_updated = True
+                st.session_state.news_page = 0  # 업데이트 시 첫 페이지로 리셋
                 st.success("지정학 뉴스 스캔 완료!")
-                st.rerun()  # 🏎️ 화면을 즉시 새로고침하여 뉴스판을 즉각 반영!
+                st.rerun()  # 화면 즉시 새로고침
             except Exception as e:
                 st.error(f"뉴스 수집 중 오류 발생: {e}")
                 
@@ -41,7 +43,7 @@ with st.sidebar:
 col1, col2 = st.columns([1, 1])
 
 # ------------------------------------------------------------------------------
-# LEFT COLUMN : 실시간 지정학적 뉴스 레이더
+# LEFT COLUMN : 실시간 지정학적 뉴스 레이더 (페이지네이션 복구)
 # ------------------------------------------------------------------------------
 with col1:
     st.subheader("📰 실시간 지정학적 뉴스 레이더")
@@ -51,8 +53,17 @@ with col1:
         try:
             news_df = pd.read_csv(news_file)
             if not news_df.empty:
-                for idx, row in news_df.head(5).iterrows():
-                    # 위험도 레벨에 따른 색상 매칭
+                # 📌 [복구]: 한 페이지에 딱 3개씩만 쪼개서 보여주기
+                items_per_page = 3
+                total_news = len(news_df)
+                max_pages = (total_news - 1) // items_per_page
+                
+                start_idx = st.session_state.news_page * items_per_page
+                end_idx = start_idx + items_per_page
+                paged_df = news_df.iloc[start_idx:end_idx]
+                
+                # 3개 뉴스 목록 출력
+                for idx, row in paged_df.iterrows():
                     level = str(row['risk_level']).upper()
                     if level == "HIGH":
                         badge = "🔴 HIGH"
@@ -66,8 +77,23 @@ with col1:
                         st.markdown(f"**🔗 원문 링크:** [{row['url']}]({row['url']})")
                         st.markdown(f"**🎯 예상 파급 효과:** `{row['expected_impact']}`")
                         st.markdown(f"📝 *요약:* {row['summary']}")
-                        st.caption(f"📅 게시일: {row['published']} | 🔍 매칭 키워드: {row['matched_keywords']}")
+                        st.caption(f"📅 게시일: {row['published']} | 🔍 매칭 키워: {row['matched_keywords']}")
                         st.markdown("---")
+                
+                # 📌 [복구]: 이전 / 다음 페이지 이동 컨트롤러 버튼
+                p_col1, p_col2 = st.columns([1, 1])
+                with p_col1:
+                    if st.session_state.news_page > 0:
+                        if st.button("⬅️ 이전 페이지", use_container_width=True):
+                            st.session_state.news_page -= 1
+                            st.rerun()
+                with p_col2:
+                    if st.session_state.news_page < max_pages:
+                        if st.button("다음 페이지 ➡️", use_container_width=True):
+                            st.session_state.news_page += 1
+                            st.rerun()
+                            
+                st.center = st.markdown(f"<center><small>Page {st.session_state.news_page + 1} of {max_pages + 1}</small></center>", unsafe_allow_html=True)
             else:
                 st.info("현재 수집된 뉴스 데이터가 비어 있습니다. 업데이트 버튼을 눌러주세요.")
         except Exception as e:
