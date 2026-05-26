@@ -1,157 +1,129 @@
 import streamlit as st
 import pandas as pd
+import subprocess
 import os
 import sys
-import predictor
-import bubble_predictor
-import news_updater  # 초고속 뉴스 엔진
+import predictor          # 지정학/변동성 예측 엔진
+import bubble_predictor   # 거시경제/버블 예측 엔진
+import news_updater
+# 페이지 기본 설정
+st.set_page_config(page_title="AI-GPR Market Risk Dashboard", layout="wide")
 
-st.set_page_config(page_title="Global Market Risk Dashboard", layout="wide")
+if "page" not in st.session_state:
+    st.session_state.page = 1
 
-st.title("🌐 글로벌 금융 시장 및 지정학적 위험도 대시보드")
-st.markdown("본 대시보드는 글로벌 지정학적 위험(GPR)과 거시경제 지표를 결합하여 시장의 변동성 및 버블 위험도를 실시간으로 진단합니다.")
+st.title("AI-GPR Market Risk Dashboard")
 
-# ==============================================================================
-# 1. 지정학적 위험도 (GPR) 및 실시간 뉴스 레이더 섹션
-# ==============================================================================
-st.header("1. 실시간 지정학적 위험도 (GPR) 레이더")
+# ==========================================
+# 📄 페이지 1: 종합 위험 상황판 (뉴스 + 실시간 버블 진단)
+# ==========================================
+if st.session_state.page == 1:
+    col_title, col_btn = st.columns([8, 2])
+    with col_title:
+        st.subheader("Today’s Geopolitical Headlines (Top 3)")
+    with col_btn:
+        if st.button("다음 페이지로 이동 ➡️ (변동성 예측)", use_container_width=True):
+            st.session_state.page = 2
+            st.rerun()
 
-# 뉴스 페이지 세션 상태
-if "news_page" not in st.session_state:
-    st.session_state.news_page = 0
-
-# 상단 제어 컨트롤러 (버튼 및 가이드)
-col_btn, col_guide = st.columns([1, 2])
-with col_btn:
-    if st.button("🚀 오늘의 지정학 뉴스 업데이트", use_container_width=True):
-        with st.spinner("최신 연합뉴스 국제망 초고속 스캔 중..."):
+    # 1-1. 지정학 뉴스 섹션
+    if st.button("오늘의 지정학 뉴스 업데이트"):
+        with st.spinner("최신 연합뉴스 국제망을 스캔하여 위험도를 분석 중입니다..."):
             try:
+                # subprocess 대신 다이렉트로 함수 호출!
                 news_updater.update_news()
-                st.session_state.news_page = 0  # 업데이트 시 첫 페이지로 리셋
-                st.rerun()  # 캡틴 오더: 스캔 완료 알림창 없이 즉시 화면 갱신하여 뉴스 반영
+                st.success("지정학 뉴스 스캔 완료!")
             except Exception as e:
-                st.error(f"뉴스 수집 중 오류 발생: {e}")
+                st.error(f"뉴스 수집 중 오류가 발생했습니다: {e}")
 
-with col_guide:
-    st.info("💡 뉴스 업데이트를 먼저 실행한 후, 아래의 금융 시장 위험도 진단을 시작하십시오.")
+    if os.path.exists("today_geopolitical_news.csv"):
+        news = pd.read_csv("today_geopolitical_news.csv")
+        # (이 아래 top_3_news = ... 부터는 기존 코드와 완전히 동일하게 둡니다)
+    # 1-2. 주식 시장 버블 위험도 섹션 (실제 머신러닝 엔진 연동)
+    st.divider()
+    st.subheader("🚨 US Market Bubble Risk Indicator")
+    st.info("거시경제 지표(버핏 지수, CAPE, 마진부채, HY스프레드 등)를 종합한 로지스틱 회귀 기반 버블 붕괴 확률 진단")
 
-# ==============================================================================
-# MAIN PAGE : 2단 레이아웃 (틀 유지)
-# ==============================================================================
-col1, col2 = st.columns([1, 1])
+    if st.button("버블 위험도 실시간 진단 시작", type="primary"):
+        with st.spinner("FRED 및 yfinance에서 실시간 데이터를 수집하고 머신러닝 연산을 수행 중입니다..."):
+            try:
+                # bubble_predictor.py의 predict() 함수 호출
+                bubble_res = bubble_predictor.predict()
+                st.session_state.bubble_result = bubble_res
+            except Exception as e:
+                st.error(f"버블 진단 중 오류가 발생했습니다: {e}")
 
-# ------------------------------------------------------------------------------
-# LEFT COLUMN : 뉴스 레이더 (알림창 제거, 가로로 2개만 콤팩트하게 배치하여 스크롤 차단)
-# ------------------------------------------------------------------------------
-with col1:
-    st.subheader("📰 실시간 핵심 뉴스 브리핑")
-    news_file = "today_geopolitical_news.csv"
-    
-    if os.path.exists(news_file):
-        try:
-            news_df = pd.read_csv(news_file)
-            if not news_df.empty:
-                # 위험도 점수(risk_score)가 높은 순서대로 상시 정렬
-                news_df = news_df.sort_values(by="risk_score", ascending=False).reset_index(drop=True)
-                
-                items_per_page = 2  # 캡틴 오더: 가로로 2개만 노출
-                total_news = len(news_df)
-                max_pages = max(0, (total_news - 1) // items_per_page)
-                
-                start_idx = st.session_state.news_page * items_per_page
-                end_idx = start_idx + items_per_page
-                paged_df = news_df.iloc[start_idx:end_idx]
-                
-                # 2칸 칼럼 레이아웃 생성
-                news_cols = st.columns(2)
-                
-                for i, (idx, row) in enumerate(paged_df.iterrows()):
-                    with news_cols[i % 2]:
-                        level = str(row['risk_level']).upper()
-                        if level == "HIGH":
-                            badge = "🔴 HIGH"
-                        elif level == "MEDIUM":
-                            badge = "🟡 MED"
-                        else:
-                            badge = "🟢 LOW"
-                        
-                        # 스크롤 방지를 위해 모든 요소를 한 줄로 묶고 길이를 극도로 압축
-                        st.markdown(f"**{badge}** | **[{row['title']}]({row['url']})**")
-                        st.caption(f"🎯 파급: `{row['expected_impact']}`")
-                        st.caption(f"📝 {str(row['summary'])[:40]}...")  # 요약을 40자로 대폭 줄여 세로 길이 최소화
-                
-                st.markdown("---")
-                
-                # 페이지네이션 컨트롤러
-                p_col1, p_col2 = st.columns([1, 1])
-                with p_col1:
-                    if st.session_state.news_page > 0:
-                        if st.button("⬅️ 이전 뉴스", use_container_width=True):
-                            st.session_state.news_page -= 1
-                            st.rerun()
-                with p_col2:
-                    if st.session_state.news_page < max_pages:
-                        if st.button("다음 뉴스 ➡️", use_container_width=True):
-                            st.session_state.news_page += 1
-                            st.rerun()
-                            
-                st.markdown(f"<center><small>Page {st.session_state.news_page + 1} of {max_pages + 1}</small></center>", unsafe_allow_html=True)
-            else:
-                st.info("현재 수집된 뉴스 데이터가 비어 있습니다.")
-        except Exception as e:
-            st.error(f"뉴스 파일을 읽는 중 오류가 발생했습니다: {e}")
+    # 분석 결과가 세션에 존재할 때만 시각화 화면 그리기
+    if "bubble_result" in st.session_state:
+        res = st.session_state.bubble_result
+        prob = res["risk_probability"]
+        metrics = res["metrics"]
+        
+        # 위험도에 따른 상태 메시지 및 색상 제어
+        if prob >= 80:
+            status_text = "🔴 심각한 과열 구간 (Bubble Burst Imminent)"
+        elif prob >= 50:
+            status_text = "🟠 경계 구간 (High Risk)"
+        else:
+            status_text = "🟢 안정 구간 (Normal Market)"
+            
+        st.markdown(f"### {status_text} | 현재 버블 붕괴 확률: **{prob:.2f}%**")
+        
+        # 게이지 바 시각화
+        st.progress(int(prob))
+        
+        # 실시간 수집된 실제 매크로 지표 출력
+        b_m1, b_m2, b_m3, b_m4 = st.columns(4)
+        b_m1.metric("CAPE 프록시 지수", f"{metrics['cape']['value']:.1f}", f"{metrics['cape']['change']:.2f}", delta_color="inverse")
+        b_m2.metric("하이일드 스프레드", f"{metrics['hy_spread']['value']:.2f}%", f"{metrics['hy_spread']['change']:.2f}%", delta_color="inverse")
+        b_m3.metric("버핏 지수 (시총/GDP)", f"{metrics['buffett']['value']:.1f}%", f"{metrics['buffett']['change']:.1f}%", delta_color="inverse")
+        b_m4.metric("FINRA 마진부채", f"${metrics['margin']['value']:.1f}B", f"${metrics['margin']['change']:.1f}B", delta_color="inverse")
+        
+        st.caption(f"※ 데이터 최종 동기화 기준일: {res['date']} | 로컬에 최신 finra_margin.csv가 있을수록 정확도가 상승합니다.")
+
+
+# ============================================================
+# 📄 페이지 2: S&P 500 변동성 예측 대시보드
+# ============================================================
+elif st.session_state.page == 2:
+    col_title, col_btn = st.columns([8, 2])
+    with col_title:
+        st.subheader("S&P 500 Volatility Prediction (HAR-RV Model)")
+    with col_btn:
+        if st.button("⬅️ 이전 페이지로 돌아가기", use_container_width=True):
+            st.session_state.page = 1
+            st.rerun()
+
+    if st.button("예측 엔진 가동 (최신 데이터 분석)"):
+        with st.spinner("야후 파이낸스 및 EPU 데이터를 분석 중입니다..."):
+            try:
+                result = predictor.predict(refresh_data=True)
+                st.session_state.pred_result = result
+            except Exception as e:
+                st.error(f"엔진 가동 중 오류가 발생했습니다: {e}")
+
+    if "pred_result" in st.session_state:
+        res = st.session_state.pred_result
+        latest = res["latest"]
+        metrics = res["metrics"]
+
+        st.markdown("### 🎯 핵심 지표 (Latest Prediction)")
+        kpi1, kpi2, kpi3 = st.columns(3)
+        with kpi1:
+            st.metric(label="예측 연환산 변동성", value=f"{latest['predicted_annualized_vol_pct']:.2f}%")
+        with kpi2:
+            st.metric(label="오늘의 일일 분산 (σ²)", value=f"{latest['predicted_sigma2']:.4f}")
+        with kpi3:
+            st.metric(label="모델 오차율 (RMSE)", value=f"{metrics['rmse']:.4f}")
+
+        st.markdown("### 📈 모델 테스트 구간 시계열 추이 (실제 변동성 vs 예측치)")
+        history_df = pd.DataFrame(res["history"])
+        history_df.set_index("date", inplace=True)
+        st.line_chart(history_df[["actual", "predicted"]], color=["#FF4B4B", "#0068C9"])
+
+        with st.expander("⚙️ 모델 상세 스펙 및 오늘의 입력값 확인"):
+            st.write(f"**사용 알고리즘:** {res['model']['name']}")
+            st.write(f"**학습 구간:** {res['model']['trained_on']}")
+            st.json(latest["inputs"])
     else:
-        st.info("📢 아직 오늘의 뉴스 스캔 기록이 없습니다. 상단 업데이트 버튼을 누르십시오.")
-
-# ------------------------------------------------------------------------------
-# RIGHT COLUMN : GPR 지수 차트 (대칭 유지)
-# ------------------------------------------------------------------------------
-with col2:
-    st.subheader("📊 지정학적 위험 지수 (GPR Index) 추이")
-    gpr_file = "ai_gpr_data_daily.csv"
-    if os.path.exists(gpr_file):
-        try:
-            gpr_df = pd.read_csv(gpr_file, parse_dates=['Date']).set_index('Date')
-            st.line_chart(gpr_df['GPR_Index'], use_container_width=True)
-        except Exception as e:
-            st.error(f"GPR 지수 차트를 그리는 중 오류 발생: {e}")
-    else:
-        st.warning("지정학적 위험 지수 과거 데이터 파일(ai_gpr_data_daily.csv)을 찾을 수 없습니다.")
-
-# ==============================================================================
-# 2. AI 마켓 리스크 & 버블 진단 엔진 섹션
-# ==============================================================================
-st.markdown("---")
-st.header("2. AI 마켓 리스크 & 버블 진단 시스템")
-
-if st.button("📈 금융 시장 위험도 실시간 진단 시작", use_container_width=True):
-    with st.spinner("거시경제 지표 및 FINRA 마진부채 데이터를 분석 중..."):
-        try:
-            # 버블 예측 엔진 가동
-            bubble_res = bubble_predictor.predict()
-            
-            st.metric(
-                label="🚨 6개월 내 미 증시(S&P500) 버블 붕괴 및 폭락 위험도", 
-                value=f"{bubble_res['risk_probability']:.2f} %"
-            )
-            
-            # 세부 지표 시각화
-            st.markdown("### 📊 핵심 매크로 가중치 현황")
-            metrics = bubble_res["metrics"]
-            
-            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            with m_col1:
-                st.metric(label="📊 CAPE Proxy (밸류에이션)", value=f"{metrics['cape']['value']:.2f}", delta=f"{metrics['cape']['change']:.2f}")
-            with m_col2:
-                st.metric(label="💵 버핏 지수", value=f"{metrics['buffett']['value']:.1f}%", delta=f"{metrics['buffett']['change']:.1f}%")
-            with m_col3:
-                st.metric(label="📉 하이일드 스프레드", value=f"{metrics['hy_spread']['value']:.2f}%", delta=f"{metrics['hy_spread']['change']:.2f}%")
-            with m_col4:
-                st.metric(label="💳 FINRA 마진 부채", value=f"${metrics['margin']['value']:,.1f}B", delta=f"${metrics['margin']['change']:,.1f}B")
-            
-            st.caption(f"🗓️ 최종 데이터 기준일: {bubble_res['date']}")
-            
-        except Exception as e:
-            st.error(f"금융 리스크 분석 중 엔진 에러 발생: {e}")
-else:
-    st.warning("⚡ 진단 시작 버튼을 누르면 로지스틱 회귀 AI 모델이 실시간 매크로 지표를 연산합니다.")
+        st.info("상단의 '예측 엔진 가동' 버튼을 눌러 분석을 시작하십시오.")
