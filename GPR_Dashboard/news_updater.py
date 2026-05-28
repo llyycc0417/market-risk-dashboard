@@ -46,8 +46,19 @@ KEYWORD_WEIGHTS = {
     "합의": -1,
 }
 
+def fetch_article_text(url: str) -> str:
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        paragraphs = soup.find_all("p")
+        text = " ".join(p.get_text(" ", strip=True) for p in paragraphs)
+        return text[:3000]
+    except Exception:
+        return ""
+
 def score_news(title: str, summary: str, body: str):
-    # 가속 패치: body가 비어있어도 title과 summary로 완벽하게 점수를 매깁니다.
     text = f"{title} {summary} {body}".lower()
     score = 0
     matched = []
@@ -85,14 +96,11 @@ def update_news(output_csv="today_geopolitical_news.csv", top_n=10):
             title = getattr(entry, "title", "")
             link = getattr(entry, "link", "")
             summary = getattr(entry, "summary", "")
-            published = getattr(entry, "published", "")
 
-            # 🏎️ [초고속 엔진 개조]: 느려터진 외부 사이트 본문 수집(fetch_article_text)을 생략합니다.
-            # RSS 요약본에 붙은 HTML 태그만 깔끔하게 떼어내고 정제합니다.
-            clean_summary = BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)
-            
-            # 본문(body) 자리에 빈값("")을 넣어 병목 현상을 완벽하게 차단합니다.
-            score, level, matched, impact = score_news(title, clean_summary, "")
+            published = getattr(entry, "published", "")
+            body = fetch_article_text(link)
+
+            score, level, matched, impact = score_news(title, summary, body)
 
             rows.append({
                 "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -103,10 +111,10 @@ def update_news(output_csv="today_geopolitical_news.csv", top_n=10):
                 "risk_level": level,
                 "matched_keywords": matched,
                 "expected_impact": impact,
-                "summary": clean_summary[:300],
+                "summary": BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)[:300],
             })
 
-            # time.sleep(0.3) 👈 직접 기사 사이트를 찌르지 않으므로 딜레이 시간도 과감히 삭제하여 속도를 올립니다!
+            time.sleep(0.3)
 
     df = pd.DataFrame(rows)
 

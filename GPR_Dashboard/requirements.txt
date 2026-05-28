@@ -3,6 +3,3 @@ pandas
 numpy
 yfinance
 scikit-learn
-feedparser
-beautifulsoup4
-requests
